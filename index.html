@@ -948,7 +948,14 @@ async function doSend(text,footer=false){
   } else {
     // Normal Text Chat
     try{
-      const history=messages.slice(-14).map(m=>({role:m.role,content:m.content}));
+      const history=messages.slice(-14).map(m=>{
+        let text = m.content;
+        // Strip massive base64 strings from history to prevent 500 Payload Too Large errors
+        if(text.includes('![Generated Image](data:image')){
+          text = text.replace(/!\[Generated Image\]\(data:image\/[^;]+;base64,[^)]+\)/g, '[Image generated]');
+        }
+        return {role:m.role,content:text};
+      });
       const aiText=await callAPI(history,abortCtrl.signal);
       removeThinking(thinkEl);
       const aiMsg={role:'assistant',content:aiText,time:getTime()};
