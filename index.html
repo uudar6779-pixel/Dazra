@@ -930,7 +930,7 @@ async function sendMsg(){
   renderFilePreviews(false);
 }
 // ─── SEND (footer input) ──────────────────────────────────────────
-async function sendMsgFooter(){
+async async function sendMsgFooter(){
   const input=document.getElementById('footer-chat-input');
   const text=input?.value?.trim()||'';
   if((!text&&!attachedFiles.length)||isLoading)return;
@@ -979,8 +979,8 @@ async function doSend(text,footer=false){
   
   const txt = full.trim();
   const imgRegex = /^(draw|paint|sketch|generate (an )?image|create (an )?image|make (an )?image|picture of|photo of|image of|show me an image|show me a picture|රූපයක්|චිත්‍රයක්)/i;
-  const isImageCmd = txt.toLowerCase().startsWith('/image ');
-  const isImageIntent = imgRegex.test(txt);
+  const isImageCmd = text.toLowerCase().startsWith('/image ');
+  const isImageIntent = imgRegex.test(text);
   
   if(isImageCmd || isImageIntent){
     const prompt = isImageCmd ? txt.substring(7).trim() : txt;
