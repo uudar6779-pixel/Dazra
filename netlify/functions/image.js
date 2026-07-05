@@ -21,6 +21,10 @@ exports.handler = async function(event, context) {
       };
     }
 
+    // Enhance the prompt for 100% premium quality
+    const enhancedPrompt = `${prompt}, masterpiece, best quality, highly detailed, 4k resolution, photorealistic, stunning lighting, sharp focus`;
+    const negativePrompt = "blurry, low res, low quality, pixelated, distorted, deformed, ugly, poorly drawn";
+
     // Using Cloudflare Workers AI - Stable Diffusion XL
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`,
@@ -30,7 +34,10 @@ exports.handler = async function(event, context) {
           "Authorization": `Bearer ${API_TOKEN}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ 
+          prompt: enhancedPrompt,
+          negative_prompt: negativePrompt
+        })
       }
     );
 
