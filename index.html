@@ -852,7 +852,6 @@ function initInput(){
     fi.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(fsb&&!fsb.disabled)sendMsgFooter();}});
   }
 }
-}
 // ─── MODE SWITCHING ───────────────────────────────────────────────
 function showChatMode(){
   const ws=document.getElementById('welcome-screen');if(ws)ws.style.display='none';
