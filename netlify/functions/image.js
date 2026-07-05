@@ -20,24 +20,29 @@ exports.handler = async function(event, context) {
       };
     }
 
-    const enhancedPrompt = `${prompt}, masterpiece, best quality, highly detailed, 4k resolution, photorealistic, stunning lighting, sharp focus`;
-    const negativePrompt = "blurry, low res, low quality, pixelated, distorted, deformed, ugly, poorly drawn";
+    let enhancedPrompt = `${prompt}, masterpiece, ultra-detailed, highly detailed, 4k resolution, hyperrealistic, cinematic lighting, breathtaking, award-winning photography, sharp focus`;
+    const negativePrompt = "blurry, low res, low quality, pixelated, distorted, deformed, ugly, poorly drawn, bad anatomy, extra limbs, watermark, artifacts";
 
-    let modelId = '@cf/stabilityai/stable-diffusion-xl-base-1.0';
+    // Use state-of-the-art FLUX model for text-to-image (provides Gemini-level quality)
+    let modelId = '@cf/black-forest-labs/flux-1-schnell';
     let payload = {
       prompt: enhancedPrompt,
-      negative_prompt: negativePrompt
+      num_steps: 4 // FLUX schnell is optimized for 4 steps
     };
 
     // If an image was attached, switch to Img2Img model
     if (imageBytes) {
+      // Cloudflare currently only has SD 1.5 for Img2Img. We heavily tune it for max quality.
       modelId = '@cf/runwayml/stable-diffusion-v1-5-img2img';
-      // Convert base64 string to an array of integers (Cloudflare API requirement for some models)
-      // Actually, Cloudflare REST API accepts an array of numbers for image:
       const binaryString = Buffer.from(imageBytes, 'base64');
-      payload.image = Array.from(new Uint8Array(binaryString));
-      payload.guidance = 7.5;
-      payload.strength = 0.5; // Default strength for modification
+      payload = {
+        prompt: enhancedPrompt,
+        negative_prompt: negativePrompt,
+        image: Array.from(new Uint8Array(binaryString)),
+        guidance: 8.5,
+        strength: 0.65, // Strong enough to edit, but keeps original structure
+        num_steps: 20 // Max steps for better quality
+      };
     }
 
     const response = await fetch(
@@ -57,8 +62,18 @@ exports.handler = async function(event, context) {
       throw new Error(`Cloudflare API Error: ${err}`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const contentType = response.headers.get("content-type") || "";
+    let base64 = "";
+
+    if (contentType.includes("application/json")) {
+      const jsonResponse = await response.json();
+      base64 = (jsonResponse.result && jsonResponse.result.image) || "";
+      if (!base64) throw new Error("JSON response did not contain an image");
+    } else {
+      const arrayBuffer = await response.arrayBuffer();
+      base64 = Buffer.from(arrayBuffer).toString('base64');
+    }
+
     const dataUrl = `data:image/png;base64,${base64}`;
 
     return {
