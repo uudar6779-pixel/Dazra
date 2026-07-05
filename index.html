@@ -930,7 +930,7 @@ async function sendMsg(){
   renderFilePreviews(false);
 }
 // ─── SEND (footer input) ──────────────────────────────────────────
-async async function sendMsgFooter(){
+async function sendMsgFooter(){
   const input=document.getElementById('footer-chat-input');
   const text=input?.value?.trim()||'';
   if((!text&&!attachedFiles.length)||isLoading)return;
@@ -965,8 +965,8 @@ async function doSend(text,footer=false){
   
   showChatMode();
   const fsb=document.getElementById('footer-send-btn');if(fsb)fsb.disabled=true;
-  const stopBtn=document.getElementById('footer-stop-btn');
   const wsb=document.getElementById('send-btn');if(wsb)wsb.disabled=true;
+  const stopBtnEl=document.getElementById(footer?'footer-stop-btn':'stop-btn');
   
   const mc=document.getElementById('messages-container');
   const userMsg={role:'user',content:text + (fileNames.length?'\n\nAttached: '+fileNames.join(', '):''),time:getTime()};
@@ -974,7 +974,7 @@ async function doSend(text,footer=false){
   mc.appendChild(buildMsgEl(userMsg));scrollBot();
   
   isLoading=true;
-  if(stopBtn)stopBtn.classList.add('visible');
+  if(stopBtnEl)stopBtnEl.classList.add('visible');
   const thinkEl=showThinking();abortCtrl=new AbortController();
   
   const txt = full.trim();
@@ -1027,13 +1027,12 @@ async function doSend(text,footer=false){
   }
   
   isLoading=false;abortCtrl=null;
-  if(stopBtn)stopBtn.classList.remove('visible');
+  if(stopBtnEl)stopBtnEl.classList.remove('visible');
   if(fsb)fsb.disabled=false;
-}
-
   if(wsb)wsb.disabled=false;
   scrollBot();
-  const fi=document.getElementById('footer-chat-input');if(fi)fi.focus();
+  const fi=document.getElementById(footer?'footer-chat-input':'chat-input');
+  if(fi)fi.focus();
 }
 function stopGen(){
   if(abortCtrl)abortCtrl.abort();
