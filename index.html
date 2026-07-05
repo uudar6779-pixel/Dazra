@@ -405,6 +405,13 @@ body{
 #sidebar-overlay{display:none;position:fixed;inset:0;z-index:49;background:rgba(0,0,0,0.35);}
 #sidebar-overlay.visible{display:block;}
 </style>
+  <!-- PDF.js for frontend PDF parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if(window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
 </head>
 <body>
 
@@ -845,8 +852,7 @@ function initInput(){
     fi.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(fsb&&!fsb.disabled)sendMsgFooter();}});
   }
 }
-function useSuggestion(text){const i=document.getElementById('chat-input');if(!i)return;i.value=text;i.dispatchEvent(new Event('input'));i.focus();setTimeout(()=>sendMsg(),80);}
-
+}
 // ─── MODE SWITCHING ───────────────────────────────────────────────
 function showChatMode(){
   const ws=document.getElementById('welcome-screen');if(ws)ws.style.display='none';
@@ -860,13 +866,10 @@ function showWelcomeMode(){
   const ms=document.getElementById('messages-scroll');if(ms)ms.style.display='none';
   const cf=document.getElementById('chat-input-footer');if(cf)cf.style.display='none';
   const mc=document.getElementById('messages-container');if(mc){mc.innerHTML='';mc.classList.add('hidden');}
-  // reset welcome input
   const wi=document.getElementById('chat-input');if(wi){wi.value='';wi.style.height='auto';}
   const sb=document.getElementById('send-btn');if(sb)sb.disabled=true;
-  // reset footer input
   const fi=document.getElementById('footer-chat-input');if(fi){fi.value='';fi.style.height='auto';}
   const fsb=document.getElementById('footer-send-btn');if(fsb)fsb.disabled=true;
-  // hide any visible stop buttons
   const st1=document.getElementById('stop-btn');if(st1)st1.classList.remove('visible');
   const st2=document.getElementById('footer-stop-btn');if(st2)st2.classList.remove('visible');
   startGreetings();
@@ -883,6 +886,40 @@ function renderFilePreviews(footer=false){
   attachedFiles.forEach((file,i)=>{const item=document.createElement('div');item.className='file-preview-item';const icon=file.type.startsWith('image/')?'🖼️':file.type.includes('pdf')?'📄':'📎';item.innerHTML=`${icon} <span>${escH(file.name.length>20?file.name.slice(0,18)+'...':file.name)}</span><button class="remove-file" onclick="removeFile(${i},${footer})">&#x2715;</button>`;strip.appendChild(item);});
 }
 function removeFile(idx,footer){attachedFiles.splice(idx,1);renderFilePreviews(footer);}
+
+async function extractFileContent(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    if (file.type.startsWith('image/')) {
+      reader.onload = (e) => resolve({ type: 'image', base64: e.target.result.split(',')[1], name: file.name });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    } 
+    else if (file.name.toLowerCase().endsWith('.pdf')) {
+      if (!window.pdfjsLib) return resolve({ type: 'text', content: '[PDF reading requires pdf.js library]' });
+      reader.onload = async (e) => {
+        try {
+          const pdf = await pdfjsLib.getDocument(new Uint8Array(e.target.result)).promise;
+          let fullText = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            fullText += textContent.items.map(item => item.str).join(' ') + '\n\n';
+          }
+          resolve({ type: 'text', content: fullText.trim() });
+        } catch(err) { resolve({ type: 'text', content: '[Error reading PDF]' }); }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    }
+    else {
+      // Text files
+      reader.onload = (e) => resolve({ type: 'text', content: e.target.result });
+      reader.onerror = reject;
+      reader.readAsText(file);
+    }
+  });
+}
 
 // ─── SEND (welcome input) ─────────────────────────────────────────
 async function sendMsg(){
@@ -903,23 +940,44 @@ async function sendMsgFooter(){
   renderFilePreviews(true);
 }
 async function doSend(text,footer=false){
-  const fileNames=attachedFiles.map(f=>f.name);
-  const full=text+(fileNames.length?'\n\nAttached: '+fileNames.join(', '):'');
+  let extractedText = '';
+  let attachedImageBase64 = null;
+  let fileNames = [];
+  
+  if(attachedFiles.length > 0) {
+    for(const f of attachedFiles) {
+      fileNames.push(f.name);
+      try {
+        const ext = await extractFileContent(f);
+        if(ext.type === 'image') {
+          attachedImageBase64 = ext.base64;
+          extractedText += `\n\n[Attached Image: ${f.name}]`;
+        } else if(ext.type === 'text') {
+          extractedText += `\n\n--- Contents of ${f.name} ---\n${ext.content}\n--- End of ${f.name} ---\n`;
+        }
+      } catch(e) {
+        console.error("Error reading file", e);
+      }
+    }
+  }
+  
+  const full=text + extractedText;
   attachedFiles=[];
-  // Switch to chat mode immediately (both welcome + footer send go here)
+  
   showChatMode();
-  // Always use footer buttons (visible in chat mode)
   const fsb=document.getElementById('footer-send-btn');if(fsb)fsb.disabled=true;
   const stopBtn=document.getElementById('footer-stop-btn');
-  // Also disable welcome send btn just in case
   const wsb=document.getElementById('send-btn');if(wsb)wsb.disabled=true;
+  
   const mc=document.getElementById('messages-container');
-  const userMsg={role:'user',content:full,time:getTime()};
-  messages.push(userMsg);mc.appendChild(buildMsgEl(userMsg));scrollBot();
+  const userMsg={role:'user',content:text + (fileNames.length?'\n\nAttached: '+fileNames.join(', '):''),time:getTime()};
+  messages.push({role:'user',content:full}); 
+  mc.appendChild(buildMsgEl(userMsg));scrollBot();
+  
   isLoading=true;
   if(stopBtn)stopBtn.classList.add('visible');
   const thinkEl=showThinking();abortCtrl=new AbortController();
-  // Image Generation Command & Intent Detection
+  
   const txt = full.trim();
   const imgRegex = /^(draw|paint|sketch|generate (an )?image|create (an )?image|make (an )?image|picture of|photo of|image of|show me an image|show me a picture|රූපයක්|චිත්‍රයක්)/i;
   const isImageCmd = txt.toLowerCase().startsWith('/image ');
@@ -928,10 +986,13 @@ async function doSend(text,footer=false){
   if(isImageCmd || isImageIntent){
     const prompt = isImageCmd ? txt.substring(7).trim() : txt;
     try{
+      const payload = { prompt };
+      if(attachedImageBase64) payload.imageBytes = attachedImageBase64;
+      
       const r = await fetch('/.netlify/functions/image', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(payload),
         signal: abortCtrl.signal
       });
       const d = await r.json();
@@ -946,15 +1007,13 @@ async function doSend(text,footer=false){
       if(e.name!=='AbortError')mc.appendChild(buildMsgEl({role:'assistant',content:t('errorMsg')+'\n\n`'+(e.message||'Unknown error')+'`',time:getTime()}));
     }
   } else {
-    // Normal Text Chat
     try{
       const history=messages.slice(-14).map(m=>{
-        let text = m.content;
-        // Strip massive base64 strings from history to prevent 500 Payload Too Large errors
-        if(text.includes('![Generated Image](data:image')){
-          text = text.replace(/!\[Generated Image\]\(data:image\/[^;]+;base64,[^)]+\)/g, '[Image generated]');
+        let content = m.content;
+        if(content.includes('![Generated Image](data:image')){
+          content = content.replace(/!\[Generated Image\]\(data:image\/[^;]+;base64,[^)]+\)/g, '[Image generated]');
         }
-        return {role:m.role,content:text};
+        return {role:m.role,content};
       });
       const aiText=await callAPI(history,abortCtrl.signal);
       removeThinking(thinkEl);
@@ -971,6 +1030,8 @@ async function doSend(text,footer=false){
   isLoading=false;abortCtrl=null;
   if(stopBtn)stopBtn.classList.remove('visible');
   if(fsb)fsb.disabled=false;
+}
+
   if(wsb)wsb.disabled=false;
   scrollBot();
   const fi=document.getElementById('footer-chat-input');if(fi)fi.focus();
